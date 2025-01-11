@@ -1,8 +1,6 @@
 import { createNext } from 'e2e-utils'
-import fs from 'fs'
-import { waitFor } from 'next-test-utils'
-import path from 'path'
-import { NextInstance } from 'test/lib/next-modes/base'
+import { check } from 'next-test-utils'
+import { NextInstance } from 'e2e-utils'
 
 describe('correct tsconfig.json defaults', () => {
   let next: NextInstance
@@ -23,38 +21,47 @@ describe('correct tsconfig.json defaults', () => {
   afterAll(() => next.destroy())
 
   it('should add `moduleResolution` when generating tsconfig.json in dev', async () => {
-    const tsconfigPath = path.join(next.testDir, 'tsconfig.json')
-    expect(fs.existsSync(tsconfigPath)).toBeFalse()
+    try {
+      expect(
+        await next.readFile('tsconfig.json').catch(() => false)
+      ).toBeFalse()
 
-    await next.start()
-    await waitFor(1000)
-    await next.stop()
+      await next.start()
 
-    expect(fs.existsSync(tsconfigPath)).toBeTrue()
+      let content: string
+      // wait for tsconfig to be written
+      await check(async () => {
+        content = await next.readFile('tsconfig.json')
+        return content && content !== '{}' ? 'ready' : 'retry'
+      }, 'ready')
 
-    const tsconfig = JSON.parse(await next.readFile('tsconfig.json'))
-    expect(next.cliOutput).not.toContain('moduleResolution')
+      const tsconfig = JSON.parse(content)
+      expect(next.cliOutput).not.toContain('moduleResolution')
 
-    expect(tsconfig.compilerOptions).toEqual(
-      expect.objectContaining({ moduleResolution: 'node' })
-    )
+      expect(tsconfig.compilerOptions).toEqual(
+        expect.objectContaining({ moduleResolution: 'node' })
+      )
+    } finally {
+      await next.stop()
+    }
   })
 
   it('should not warn for `moduleResolution` when already present and valid', async () => {
-    const tsconfigPath = path.join(next.testDir, 'tsconfig.json')
-    expect(fs.existsSync(tsconfigPath)).toBeTrue()
+    try {
+      expect(
+        await next.readFile('tsconfig.json').catch(() => false)
+      ).toBeTruthy()
 
-    await next.start()
-    await waitFor(1000)
-    await next.stop()
+      await next.start()
 
-    expect(fs.existsSync(tsconfigPath)).toBeTrue()
+      const tsconfig = JSON.parse(await next.readFile('tsconfig.json'))
 
-    const tsconfig = JSON.parse(await next.readFile('tsconfig.json'))
-
-    expect(tsconfig.compilerOptions).toEqual(
-      expect.objectContaining({ moduleResolution: 'node' })
-    )
-    expect(next.cliOutput).not.toContain('moduleResolution')
+      expect(tsconfig.compilerOptions).toEqual(
+        expect.objectContaining({ moduleResolution: 'node' })
+      )
+      expect(next.cliOutput).not.toContain('moduleResolution')
+    } finally {
+      await next.stop()
+    }
   })
 })
